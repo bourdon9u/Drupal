@@ -1,0 +1,212 @@
+<?php
+/**
+ * @file
+ * Enables downloads only if email is provided. Email only needs to be
+ * provided once because the authentication is stored in a cookie while
+ * being stored in the database and matched.
+ */
+
+/**
+ * Implementation of hook_help().
+ */
+function email_download_help($path, $arg) {
+  switch ($path) {
+    case 'admin/help#email_download':
+      $dl_path = l('Downloads', 'downloads');
+      $admin_path = l('admin/content/email_download', 'admin/content/email_download');
+      $output = '<p>' . t('Click on menu item !dl_path to view files available for download.', array('!dl_path' => $dl_path)) . '</p>';
+      $output .= '<p>' . t('Click on menu item !admin_path to add/update downloads.', array('!admin_path' => $admin_path)) . '</p>';
+      return $output;
+  }
+}
+
+/**
+ * Implementation of hook_theme().
+ */
+function email_download_theme($existing, $type, $theme, $path) {
+  return array(
+    'email_download_files_list' => array(
+      'arguments' => array('files' => array(), 'title' => '', 'admin' => NULL),
+    ),
+    'email_download_stats' => array(
+      'arguments' => array('data' => array()),
+      'file' => 'email_download.admin.inc',
+    ),
+    'email_download_page_form' => array(
+      'arguments' => array('form' => NULL),
+      'file' => 'email_download.admin.inc',
+    ),
+    'email_download_settings' => array(
+      'arguments' => array('form' => NULL),
+      'file' => 'email_download.admin.inc',
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_perm().
+ */
+function email_download_perm() {
+  return array('administer downloads', 'view downloads', 'download without email verification');
+}
+
+/**
+ * Implementation of hook_access().
+ */
+function email_download_access($op, $node, $account) {
+  switch ($op) {
+    case 'create': case 'delete': case 'update':
+      return user_access('administer downloads', $account);
+    case 'view':
+      return user_access('view downloads', $account);
+  }
+}
+
+/**
+ * Implementation of hook_menu().
+ */
+function email_download_menu() {
+  $items = array();
+
+  $items['admin/settings/email_download'] = array(
+    'title' => 'Email download',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('email_download_settings'),
+    'access arguments' => array('administer site settings'),
+    'file' => 'email_download.admin.inc',
+  );
+  
+  $items['admin/content/email_download'] = array(
+    'title' => 'Administer downloads',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('email_download_page_form'),
+    'access arguments' => array('administer downloads'),
+    'file' => 'email_download.admin.inc',
+  );
+
+  $items['admin/content/email_download/delete/%'] = array(
+    'title' => 'Delete File',
+    'title arguments' => array('Delete file', 4),
+    'title callback' => 'email_download_dynamic_title',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('email_download_delete_form', 4),
+    'access arguments' => array('administer downloads'),
+    'file' => 'email_download.admin.inc',
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['downloads'] = array(
+    'title' => 'Downloads',
+    'page callback' => 'email_download_download_files',
+    'access arguments' => array('view downloads'),
+  );
+
+  $items['download/%'] = array(
+    'title' => "Download file",
+    'title arguments' => array('Download', 1),
+    'title callback' => 'email_download_dynamic_title',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('email_download_download_file_form', 1),
+    'access arguments' => array('view downloads'),
+    'file' => 'email_download.inc',
+    'type' => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+
+/**
+ * Menu title callback to allow for dynamic page titles
+ */
+function email_download_dynamic_title($title, $arg) {
+  return t('!title !arg', array('!title' => $title, '!arg' => $arg));
+}
+
+/**
+ * File delete confirmation form
+ */
+function email_download_delete_form($form_state, $file) {
+  $form = array();
+
+  $warn = t('Do you really want to delete !file? This will permanently delete the file and all statistics associated with it.', array('!file' => $file));
+  $form['download']['info'] = array(
+    '#value' => '<p>' . $warn . '</p>',
+  );
+
+  $form['download']['file'] = array(
+    '#type' => 'value',
+    '#value' => $file,
+  );
+
+  $form['download']['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Confirm Delete'),
+  );
+
+  $form['#redirect'] = 'admin/content/email_download';
+  return $form;
+}
+
+function email_download_delete_form_submit($form, $form_state) {
+  // Trash the file
+  $file = $form_state['values']['file'];
+  if (unlink(file_directory_path() . '/' . variable_get('email_download_directory', 'secure') . '/' . $file)) {
+    // Remove the associated stats
+    db_query("DELETE FROM {email_download_download} WHERE file = '%s'", $file);
+
+    // Clean out users from email_download_email who no longer have an eid
+    // in the download table
+    // Find all eids who don't have a corresponding download and clean them
+    // out of the system.
+    $eids = array();
+    $result = db_query("SELECT e.eid FROM {email_download_email} e LEFT JOIN {email_download_download} d ON e.eid = d.eid WHERE d.file IS NULL");
+    while ($eid = db_result($result)) {
+      $eids[] = $eid;
+    }
+    $eids = implode(', ', $eids);
+    if ($eids) {
+      db_query("DELETE FROM {email_download_email} WHERE eid IN (%s)", $eids);
+      db_query("DELETE FROM {email_download_fields} WHERE eid IN (%s)", $eids);
+    }
+  }
+  else {
+    drupal_set_message(t('An error occurred while attempting to remove the file. Please ensure the webserver has permission to remove the file and try again.'), 'error');
+  }
+}
+
+/**
+ * Menu callback for the downloads page
+ */
+function email_download_download_files() {
+  $files =  _email_download_list_files();
+  return theme('email_download_files_list', $files);
+}
+
+/****** Helper functions *******/
+
+// @TODO: This function needs to store the file list in a cache
+function _email_download_list_files() {
+  $dir = file_directory_path() . '/' . variable_get('email_download_directory', 'secure');
+  $files = file_scan_directory($dir, '.*');
+  return $files;
+}
+
+/****** Theme functions *******/
+
+function theme_email_download_files_list($files, $title = '', $admin = FALSE) {
+  $items = array();
+  foreach ($files as $file) {
+    $output = l($file->basename, "download/" . $file->basename);
+    if ($admin) {
+      $filepath = 'admin/content/email_download/delete/' . $file->basename;
+      $output .= ' ' . l(t('(Delete)'), $filepath);
+    }
+    $items[] = $output;
+  }
+  if (!$admin && empty($title)) {
+    // Give the download list a description if one isn't already set.
+    $title = '<h4>' . t("Please select the file you wish to download:") . '</h4>';
+  }
+  return theme_item_list($items, $title);
+}

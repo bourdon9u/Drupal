@@ -1,0 +1,18 @@
+My ongoing todo list / notes:
+
+* There should be an admin setting somewhere that lets you configure the directory for where to save these files
+
+* Add an admin configuration page:
+ Options:
+    Download page intro text
+    Enable on attachments
+
+* Add a page to clear the download list or remove specific download stats
+
+* There should be an api call like url() that returns the path of the  desired file to download e.g. email_download_url($file)
+
+* Add a content filter that lets you easily insert a link to one of these files in a entry form (maybe it would contain a popup that would show a list of all possible files to link in)
+
+* Make this work with the standard upload / attachement system module. Perhaps you could just "tick" a box next to the attachement that says "require email" or something.
+
+* Make this work with /any/ file in the system through a hook or some other mechanism

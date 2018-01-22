@@ -1,0 +1,10 @@
+name = Email Download
+description = Allows file downloads to be restricted until the requester enters their email address. This email address is then stored in the database and reported back to privileged users.
+package = Other
+core = 6.x
+; Information added by drupal.org packaging script on 2011-12-09
+version = "6.x-2.1"
+core = "6.x"
+project = "email_download"
+datestamp = "1323454845"
+

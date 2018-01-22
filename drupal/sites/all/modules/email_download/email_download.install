@@ -1,0 +1,138 @@
+<?php
+/**
+ * @file
+ * Email download installation
+ */
+
+/**
+ * Implementation of hook_install().
+ */
+function email_download_install() {
+  // Create tables.
+  drupal_install_schema('email_download');
+}
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function email_download_uninstall() {
+  // Remove tables.
+  drupal_uninstall_schema('email_download');
+  variable_del('email_download_form_settings');
+  variable_del('email_download_directory');
+}
+
+/**
+ * Implementation of hook_schema().
+ */
+function email_download_schema() {
+
+  $schema['email_download_email'] = array(
+    'description' => 'Stores the emails of users who have signed up for a download',
+    'fields' => array(
+      'eid' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+      ),
+      'email' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+      ),
+      'auth' => array(
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+      ),
+      'updated_at' => array(
+        'type' => 'datetime',
+        'not null' => TRUE,
+      ),
+    ),
+    'primary key' => array('eid'),
+  );
+
+  $schema['email_download_download'] = array(
+    'description' => 'Tracks information about each individual download.',
+    'fields' => array(
+      'did' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'description' => 'Primary Key: Unique ID for the download',
+      ),
+      'eid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'Foreign key for email_download_email',
+      ),
+      'updated_at' => array(
+        'type' => 'datetime',
+        'not null' => TRUE,
+      ),
+      'count' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+        'length' => 10,
+      ),
+      'file' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+      ),
+    ),
+    'primary key' => array('did'),
+  );
+
+  $schema['email_download_fields'] = array(
+    'fields' => array(
+      'eid' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+      ),
+      'first_name' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+      ),
+      'last_name' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+      ),
+      'company' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+      ),
+      'title' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+      ),
+    ),
+    'primary key' => array('eid'),
+  );
+
+  return $schema;
+}
+
+function email_download_update_6001() {
+  $ret = array();
+  $schema = email_download_schema();
+  db_create_table($ret, 'email_download_fields', $schema['email_download_fields']);
+  return $ret;
+}
+
+/**
+ * Fix the primary key column in the email_download_download table.
+ */
+function email_download_update_6002() {
+  $ret = array();
+  update_sql("ALTER TABLE email_download_download MODIFY did INT NOT NULL");
+  update_sql("ALTER TABLE {email_download_download} DROP PRIMARY KEY");
+  update_sql("ALTER TABLE {email_download_download} ADD PRIMARY KEY did (did)");
+  return $ret;
+}
